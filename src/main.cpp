@@ -8,6 +8,7 @@
 #define SCREEN_HEIGHT 64 // OLED display height, in pixels
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
 
+
 #define upAirPin 16      //  Inlet solenoid (add air)
 #define downAirPin 10    //  outlet solenoid (remove air)
 #define sensPin A0       //  Pressure sensor 
@@ -17,37 +18,41 @@ Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
 #define potLow 6         // Set 0v for potentiometer
 #define switchLock 7     // Switch for airing
 #define buzzerPin 17
+#define RxP 14           // Set Rx Pin for Bluetooth module
+#define TxP 15           // Set Tx Pin for Bluetooth module
+#define btStatePin 5    // HC-05 State
 
 #define sUp 1
 #define sDown 2
 #define sFinished 3
 #define sMeasure 4
 #define sReady 5
-#define sAvg 200
+#define sAvg 200     // Number of iteration for avarage function
+#define sBT 6
 
 
-//Define Variables we'll be connecting to
-double newSetpoint;
-double tnewSetpoint;
-unsigned long setTime;
+unsigned long setTime, tempTime2 = 0, tempTime3 = 0;
 
-unsigned int tInput, tSetpoint, tOutput, tSens, tSet, tError;
+int  tInput = 0, tSetpoint, tSetpointTemp;
+unsigned int tError;
 
-int currentSetPressure;
-bool switchLockState;
+int currentSetPressure, tActivateTemp;
+bool switchLockState, btState = 0, tActivate=0;
 int sensVal;
 int sStatus = 0;
 
+//SoftwareSerial BT(RxP,TxP);
 
 void setup() {
-   Serial.begin (9600);
-  
+  Serial.begin (9600);
+  Serial1.begin (9600);
+
   if(!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) { 
    Serial.println("SSD1306 allocation failed");
    for(;;); // Don't proceed, loop forever
   }
 
-  delay(2000);
+  delay(500);
   display.clearDisplay();
   display.setTextSize(1);
   display.setTextColor(WHITE);
@@ -66,20 +71,22 @@ void setup() {
   digitalWrite (potHigh, 1);
   digitalWrite (potLow, 0);
   
+  pinMode (btStatePin, INPUT);
   pinMode (sensPin, INPUT);
   pinMode (setPressure, INPUT);
-  pinMode (switchLock, INPUT_PULLUP);
+  pinMode (switchLock, INPUT);
   pinMode (upAirPin, OUTPUT);
   pinMode (downAirPin, OUTPUT);
   pinMode (buzzerPin, OUTPUT);
+  
+  
 
   //initialize the variables we're linked to
   currentSetPressure = analogRead(setPressure);
   tSetpoint = map(currentSetPressure, 0, 1023, 0, 50);
-  tnewSetpoint = tSetpoint;
 
   sensVal = analogRead(sensPin);
-  tInput = 0;
+  switchLockState = digitalRead(switchLock);
 
   while (!switchLockState) {
   display.clearDisplay();
@@ -111,11 +118,14 @@ void beep (int x){
 void relay(bool up, bool down){
   digitalWrite (upAirPin, up);
   digitalWrite (downAirPin, down);
-  if (up) sStatus =  sUp;
-  if (down) sStatus = sDown;
-  if (!up && !down && (!switchLockState && (abs(tInput-tSetpoint)<=1))) sStatus = sFinished;
-  if (!up && !down && !switchLockState && (abs(tInput-tSetpoint)>1)) sStatus = sMeasure;
-  if (!up && !down && switchLockState) sStatus = sReady;
+  if (btState) sStatus = sBT;
+  else {
+    if (up) sStatus =  sUp;
+    if (down) sStatus = sDown;
+    if (!up && !down && (!switchLockState && (abs(tInput-tSetpoint)<=1))) sStatus = sFinished;
+    if (!up && !down && !switchLockState && (abs(tInput-tSetpoint)>1)) sStatus = sMeasure;
+    if (!up && !down && switchLockState) sStatus = sReady;
+  }
 }
 
 int PSI(int xp){
@@ -136,13 +146,15 @@ int PSI(int xp){
 }
 
 int avgMeasure(){
-  int tTemp = 0;
+  unsigned long tTemp = 0;
   for (int i=0; i < sAvg; i++){
     sensVal = analogRead(sensPin);
     tTemp += sensVal;
   }
-  int finalTemp = tTemp/sAvg;
-  return finalTemp;
+  unsigned long finalTemp = tTemp/sAvg ;
+       // int finalTemp2 = map(finalTemp, 102, 921, 0, 174)
+  int finalTemp2 = PSI(finalTemp);
+  return finalTemp2;
 }
 
 void debug(){
@@ -157,6 +169,15 @@ void debug(){
   
   Serial.print("Actual PSI: ");
   Serial.println(tInput);
+
+  Serial.print("Serial Read: ");
+  Serial.println(Serial1.read());
+
+  Serial.print("tInput: ");
+  Serial.println(tInput);
+
+  Serial.print("tActivate: ");
+  Serial.println(tActivate);
 
   Serial.println(" ");
 }
@@ -176,13 +197,23 @@ void showPSI(){
         display.print((unsigned int)tSetpoint);
         display.setCursor(50,32);
         display.print(" ");
-        display.print((unsigned int)tInput);
+        if (tInput >= 65) display.print("ER");
+        if (tInput < 0) display.print("0");
+        if (tInput < 65 || tInput >= 0) display.print(tInput);
         display.display();
   }
 
 void displayStatus(){
   display.clearDisplay();
   switch (sStatus){
+    case sBT:
+      display.setTextSize(1);
+      display.setCursor(0,0);
+      display.println("Bluetooth Controlled!");
+      showPSI();
+      display.display();
+      break;
+
     case sReady:
       display.setTextSize(1);
       display.setCursor(45,0);
@@ -224,18 +255,12 @@ void displayStatus(){
   
   
 }
-//////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-
-void loop() {
-
-  
+void standaloneRoutine(){
   switchLockState = digitalRead(switchLock);
   if (switchLockState) currentSetPressure = analogRead(setPressure);
   tSetpoint = map(currentSetPressure, 0, 1023, 0, 50);
-  tInput = PSI(avgMeasure());
 
- 
   if (!switchLockState && abs(tInput-tSetpoint)>1){
         tError = abs((int)tInput-(int)tSetpoint)*1000;
         setTime = millis();
@@ -250,17 +275,71 @@ void loop() {
         switchLockState = digitalRead(switchLock);
        } 
   }  
+  relay(0,0);
+  displayStatus(); 
+}
+
+
+void bluetoothRoutine(){
+  if (Serial1.available()>0) tSetpoint = Serial1.read();
+   
+    if (tSetpoint>100) {
+      tActivate=1; 
+      tSetpoint = tSetpoint-100;
+    }
+    else tActivate=0;
+  
+
+    tError = abs(tInput-tSetpoint)*1000;
+    setTime = millis();
+    while ((millis() - setTime < tError) && tActivate) {
+     if (tInput < tSetpoint) {
+       relay (1,0);
+     }
+     if (tInput > tSetpoint) {
+       relay (0,1);
+     }
+    displayStatus();
+    } 
 
   relay(0,0);
-  displayStatus();    
+  displayStatus();   
+
+  if (millis()-tempTime3>200){
+    Serial1.write(tInput);
+    Serial1.flush();
+    tempTime3 = millis();
+  }
+
+  if (Serial1.available()>0){
+    for(int j=0; j<3; j++){
+      Serial1.read();
+    }
+  } 
+  
+}
+
+
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+
+void loop() {
+
+  tInput = avgMeasure();
+  btState = digitalRead(btStatePin);
+
+  if (btState) bluetoothRoutine();
+  if (!btState) standaloneRoutine();
+
   
   if (sStatus == sMeasure) delay (1500);
   
-
-// debug();
+/*
+if (millis() - tempTime2 > 2000){
+  debug();
+  tempTime2 = millis();
+}
+ */
 
   delay(1);
  }
- 
-
-
