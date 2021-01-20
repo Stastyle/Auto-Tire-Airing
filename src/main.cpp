@@ -4,10 +4,10 @@
 #include <Adafruit_SSD1306.h>
 #include <Adafruit_I2CDevice.h> 
 
+
 #define SCREEN_WIDTH 128 // OLED display width, in pixels
 #define SCREEN_HEIGHT 64 // OLED display height, in pixels
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
-
 
 #define upAirPin 16      //  Inlet solenoid (add air)
 #define downAirPin 10    //  outlet solenoid (remove air)
@@ -31,17 +31,16 @@ Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
 #define sBT 6
 #define writeWindow 20
 #define sMeasureWindow 1500
+#define ACKtimeout 1500
 
+////////////////////////////////////////// Create Variables ///////////////////////////////////////
 
 unsigned long setTime, tempTime2 = 0, setTime2 = 0, sMeasureTime = 0;
-
-int  tInput = 0, tSetpoint, tSetpointTemp, serialCount = 0;
+int  tInput = 0, tSetpoint, tSetpointTemp, serialCount = 0, currentSetPressure, tActivateTemp, sStatusWrite, sensVal, sStatus = 0, sStatusCheck = 0;
 unsigned int tError;
-
-int currentSetPressure, tActivateTemp, sStatusWrite;
 bool switchLockState, btState = 0, tActivate=0, tActivateCheck = 0;
-int sensVal;
-int sStatus = 0, sStatusCheck = 0;
+
+////////////////////////////////////////// Setup //////////////////////////////////////////////////
 
 void setup() {
   Serial.begin (9600);
@@ -52,7 +51,6 @@ void setup() {
    for(;;); // Don't proceed, loop forever
   }
 
-  delay(500);
   display.clearDisplay();
   display.setTextSize(1);
   display.setTextColor(WHITE);
@@ -63,14 +61,9 @@ void setup() {
   display.display();
   delay(2000);
 
-
   pinMode (sensHigh, OUTPUT);
   pinMode (potHigh, OUTPUT);
   pinMode (potLow, OUTPUT);
-  digitalWrite (sensHigh, 1);
-  digitalWrite (potHigh, 1);
-  digitalWrite (potLow, 0);
-  
   pinMode (btStatePin, INPUT);
   pinMode (sensPin, INPUT);
   pinMode (setPressure, INPUT);
@@ -79,15 +72,17 @@ void setup() {
   pinMode (downAirPin, OUTPUT);
   pinMode (buzzerPin, OUTPUT);
   
-  
-
-  //initialize the variables we're linked to
+  digitalWrite (sensHigh, 1);
+  digitalWrite (potHigh, 1);
+  digitalWrite (potLow, 0);
+    
+  //initialize values of the variables we're linked to
   currentSetPressure = analogRead(setPressure);
   tSetpoint = map(currentSetPressure, 0, 1023, 0, 50);
-
   sensVal = analogRead(sensPin);
   switchLockState = digitalRead(switchLock);
 
+  // Check if button is pressed
   while (!switchLockState) {
   display.clearDisplay();
   display.setTextSize(2);
@@ -123,7 +118,6 @@ void relay(bool up, bool down){
     if (!up && !down && (!switchLockState && (abs(tInput-tSetpoint)<1))) sStatus = sFinished;
     if (!up && !down && !switchLockState && (abs(tInput-tSetpoint)>=1)) sStatus = sMeasure;
     if (!up && !down && switchLockState) sStatus = sReady; 
-    
 }
 
 int PSI(int xp){
@@ -143,54 +137,53 @@ int PSI(int xp){
   return actualPSI;
 }
 
-int avgMeasure(){
+int avgMeasure(){           // Get reading average for pressure sensor / "low-pass filter"
   unsigned long tTemp = 0;
   for (int i=0; i < sAvg; i++){
     sensVal = analogRead(sensPin);
     tTemp += sensVal;
   }
   unsigned long finalTemp = tTemp/sAvg ;
-        int finalTemp2 = map(finalTemp, 102, 921, 0, 174);
+  int finalTemp2 = abs(map(finalTemp, 102, 921, 0, 174));
  // int finalTemp2 = PSI(finalTemp);
   return finalTemp2;
 }
 
-
 void debug(){
   if (millis() - tempTime2 > 2000){
-  tempTime2 = millis();
+   tempTime2 = millis();
 
-  Serial.print("Raw: ");
-  Serial.println(sensVal);
+    Serial.print("Raw: ");
+    Serial.println(sensVal);
 
-  Serial.print("Average Raw: ");
-  Serial.println(avgMeasure());
+    Serial.print("Average Raw: ");
+    Serial.println(avgMeasure());
     
-  Serial.print("Set pressure: ");
-  Serial.println(tSetpoint);
+    Serial.print("Set pressure: ");
+    Serial.println(tSetpoint);
   
-  Serial.print("Actual PSI: ");
-  Serial.println(tInput);
+    Serial.print("Actual PSI: ");
+    Serial.println(tInput);
 
-  Serial.print("tSetpointTemp: ");
-  Serial.println(tSetpointTemp);
+    Serial.print("tSetpointTemp: ");
+    Serial.println(tSetpointTemp);
 
-  Serial.print("tInput: ");
-  Serial.println(tInput);
+    Serial.print("tInput: ");
+    Serial.println(tInput);
 
-  Serial.print("tActivate: ");
-  Serial.println(tActivate);
+    Serial.print("tActivate: ");
+    Serial.println(tActivate);
 
-  Serial.print("sStatus sent: ");
-  Serial.println(sStatusWrite);
+    Serial.print("sStatus sent: ");
+    Serial.println(sStatusWrite);
 
-  Serial.print("Serial Available: ");
-  Serial.println(serialCount);
-  
+    Serial.print("Serial Available: ");
+    Serial.println(serialCount); 
 
-  Serial.println(" ");
+    Serial.println(" ");
+  }
 }
-}
+
 void purgeAir(){
   digitalWrite(downAirPin,HIGH);
   delay(100);
@@ -204,11 +197,10 @@ void showPSI(){
         display.setTextSize(4);
         display.setCursor(0,32);
         if (btState && !tActivate) display.print("BT");
-        else display.print((unsigned int)tSetpoint);
+           else display.print((unsigned int)tSetpoint);
         display.setCursor(50,32);
         display.print(" ");
         if (tInput >= 65) display.print("ER");
-        if (tInput < 0) display.print("0");
         if (tInput < 65 || tInput >= 0) display.print(tInput);
         display.display();
   }
@@ -257,10 +249,7 @@ void displayStatus(){
         display.println("Measuring...");
         showPSI();
       break;
-
   }
-  
-  
 }
 
 void standaloneRoutine(){
@@ -273,31 +262,25 @@ void standaloneRoutine(){
         tError = abs(tInput-tSetpoint)*1000;
         setTime = millis();
         while ((millis() - setTime < tError) && !switchLockState) {
-        if (tInput < tSetpoint) {
-          relay (1,0);
-        }
-        if (tInput > tSetpoint) {
-          relay (0,1);
-        }
-        displayStatus();
-        switchLockState = digitalRead(switchLock);
+          if (tInput < tSetpoint) relay (1,0);
+          if (tInput > tSetpoint) relay (0,1);
+          displayStatus();
+          switchLockState = digitalRead(switchLock);
        } 
   }  
   relay(0,0);
-  displayStatus(); 
 }
 
 
 void bluetoothRoutine(){
   if (!tActivate) tInput = avgMeasure();
 
-  
-  if (Serial1.available()>0){
-    serialCount += Serial1.available();
-    tSetpointTemp = Serial1.read();
-    serialCount--;
+  if (Serial1.available()>0) {
+    tSetpointTemp = Serial1.read();    /////////////// read data
+    Serial1.write('B');           
+    Serial1.flush();
   }
-   
+     
     if (tSetpointTemp>100) {
       tActivate=1; 
       tSetpoint = tSetpointTemp-100;
@@ -318,32 +301,34 @@ void bluetoothRoutine(){
       tInput = avgMeasure();
       setTime = millis();
       tError = abs(tInput-tSetpoint)*1000;
-    }  
-    else if ((millis() - setTime < tError) && tActivate) {
+    } else if ((millis() - setTime < tError) && tActivate) {
      if (tInput < tSetpoint) relay (1,0);
      if (tInput > tSetpoint) relay (0,1);
      sMeasureTime = millis();
     } else relay (0,0);
-    
 
-  if (millis() - setTime2 > writeWindow){
+  if (millis() - setTime2 > writeWindow){     ////////// send data
+    unsigned long setTempWriteTime = millis();
     sStatusWrite = sStatus+100;
-    Serial1.write(tInput);            ///////////////////// Serial1 write
+    while (1) {
+    Serial1.write(tInput);           
     Serial1.flush();
-    Serial1.write(sStatusWrite);            ///////////////////// Serial1 write
+    while (Serial1.read() != 'A' || millis() - setTempWriteTime < ACKtimeout);
+    if (millis() - setTempWriteTime > ACKtimeout) return;
+    Serial1.write('A'); 
+    Serial1.write(sStatusWrite);           
     Serial1.flush();
+    while (Serial1.read() != 'A' || millis() - setTempWriteTime < ACKtimeout);
+    Serial1.write('A');         
+    Serial1.flush();
+
     setTime2 = millis();
+    continue;
+    }
   }
 
-  displayStatus();
+      if (Serial1.available() > 10) while (Serial1.available()>1) Serial1.read();           // Flush
 
-/*
-  if (Serial1.available()>4){
-    for(int j=0; j<4; j++){
-      Serial1.read();                 ///////////////////////  Serial1 read
-    }
-  } 
-*/
 }
 
 
@@ -354,7 +339,6 @@ void loop() {
   btState = digitalRead(btStatePin);
   if (btState) bluetoothRoutine();
   if (!btState) standaloneRoutine();
-  
+  displayStatus();
   debug();
-
  }
