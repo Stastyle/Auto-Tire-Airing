@@ -144,7 +144,11 @@ int avgMeasure(){           // Get reading average for pressure sensor / "low-pa
     tTemp += sensVal;
   }
   unsigned long finalTemp = tTemp/sAvg ;
+<<<<<<< HEAD
   int finalTemp2 = abs(map(finalTemp, 102, 921, 0, 174));
+=======
+  int finalTemp2 = map(finalTemp, 102, 921, 0, 174);
+>>>>>>> c37bc49252abd9b765adc564292d6b54eeab72e2
  // int finalTemp2 = PSI(finalTemp);
   return finalTemp2;
 }
@@ -275,11 +279,15 @@ void standaloneRoutine(){
 void bluetoothRoutine(){
   if (!tActivate) tInput = avgMeasure();
 
+<<<<<<< HEAD
   if (Serial1.available()>0) {
     tSetpointTemp = Serial1.read();    /////////////// read data
     Serial1.write('B');           
     Serial1.flush();
   }
+=======
+  if (Serial1.available()>0) tSetpointTemp = Serial1.read();    /////////////// read data
+>>>>>>> c37bc49252abd9b765adc564292d6b54eeab72e2
      
     if (tSetpointTemp>100) {
       tActivate=1; 
@@ -308,6 +316,7 @@ void bluetoothRoutine(){
     } else relay (0,0);
 
   if (millis() - setTime2 > writeWindow){     ////////// send data
+<<<<<<< HEAD
     unsigned long setTempWriteTime = millis();
     sStatusWrite = sStatus+100;
     while (1) {
@@ -320,15 +329,24 @@ void bluetoothRoutine(){
     Serial1.flush();
     while (Serial1.read() != 'A' || millis() - setTempWriteTime < ACKtimeout);
     Serial1.write('A');         
+=======
+    sStatusWrite = sStatus+100;
+    Serial1.write(tInput);           
+    Serial1.flush();
+    Serial1.write(sStatusWrite);           
+>>>>>>> c37bc49252abd9b765adc564292d6b54eeab72e2
     Serial1.flush();
 
     setTime2 = millis();
     continue;
     }
   }
+<<<<<<< HEAD
 
       if (Serial1.available() > 10) while (Serial1.available()>1) Serial1.read();           // Flush
 
+=======
+>>>>>>> c37bc49252abd9b765adc564292d6b54eeab72e2
 }
 
 
