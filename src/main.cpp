@@ -327,7 +327,7 @@ void bluetoothRoutine(){
     }
   }
 
-      if (Serial1.available() > 10) while (Serial1.available()>1) Serial1.read();           // Flush
+      if (Serial1.available() > 10) while (Serial1.available()>1) int z = Serial1.read();           // Flush
 
 }
 
