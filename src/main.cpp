@@ -1,3 +1,9 @@
+/*
+
+    Device address:   ADDR:98d3:32:70900d
+
+*/
+
 #include <Arduino.h>
 #include <Wire.h>
 #include <Adafruit_GFX.h>
@@ -144,7 +150,8 @@ int avgMeasure(){           // Get reading average for pressure sensor / "low-pa
     tTemp += sensVal;
   }
   unsigned long finalTemp = tTemp/sAvg ;
-  int finalTemp2 = abs(map(finalTemp, 102, 921, 0, 174));
+  int finalTemp2 = map(finalTemp, 102, 921, 0, 174);
+  if (finalTemp2 < 0) finalTemp2 = 0;
  // int finalTemp2 = PSI(finalTemp);
   return finalTemp2;
 }
@@ -275,11 +282,11 @@ void standaloneRoutine(){
 void bluetoothRoutine(){
   if (!tActivate) tInput = avgMeasure();
 
-  if (Serial1.available()>0) {
+  if (Serial1.available()>0){
     tSetpointTemp = Serial1.read();    /////////////// read data
-    Serial1.write('B');           
-    Serial1.flush();
-  }
+    Serial1.write('a');
+  } 
+
      
     if (tSetpointTemp>100) {
       tActivate=1; 
@@ -308,26 +315,19 @@ void bluetoothRoutine(){
     } else relay (0,0);
 
   if (millis() - setTime2 > writeWindow){     ////////// send data
-    unsigned long setTempWriteTime = millis();
     sStatusWrite = sStatus+100;
-    while (1) {
+
     Serial1.write(tInput);           
     Serial1.flush();
-    while (Serial1.read() != 'A' || millis() - setTempWriteTime < ACKtimeout);
-    if (millis() - setTempWriteTime > ACKtimeout) return;
-    Serial1.write('A'); 
+
     Serial1.write(sStatusWrite);           
     Serial1.flush();
-    while (Serial1.read() != 'A' || millis() - setTempWriteTime < ACKtimeout);
-    Serial1.write('A');         
-    Serial1.flush();
-
+    
     setTime2 = millis();
-    continue;
     }
-  }
+  
 
-      if (Serial1.available() > 10) while (Serial1.available()>1) int z = Serial1.read();           // Flush
+      if (Serial1.available() > 10) while (Serial1.available()>1) int trash = Serial1.read();           // Flush
 
 }
 
